@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Personal Hub - Owner Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Space Grotesk"', 'sans-serif'],
+          body: ['"Inter"', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace']
+        },
+        colors: {
+          appbg: '#F4F6F8',
+          panel: '#FFFFFF',
+          sidebar: '#11151C',
+          sidebarmuted: '#1B2230'
+        }
+      }
+    }
+  }
+</script>
+<style>
+  html, body { background:#F4F6F8; }
+  body { font-family:'Inter', sans-serif; }
+  .font-display { font-family:'Space Grotesk', sans-serif; }
+  .font-mono { font-family:'JetBrains Mono', monospace; }
+  *:focus-visible { outline:2px solid #14B8A6; outline-offset:2px; }
+  .fade-in { animation: fadeIn .22s ease both; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(5px);} to { opacity:1; transform:translateY(0);} }
+  .nav-btn { transition: background-color .15s ease, color .15s ease, transform .1s ease; }
+  .nav-btn:active { transform: scale(0.98); }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:9999px; flex-shrink:0; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:#D1D5DB; border-radius:8px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  .tag-chip { font-family:'JetBrains Mono', monospace; font-size:11px; }
+</style>
+</head>
+<body class="text-[#1A1D23]">
+
+<!-- ROUTE GUARD - Force URL parameter -->
+<script>
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const role = params.get('role');
+  const currentUrl = window.location.href.split('?')[0];
+  
+  if (!role || (role !== 'owner' && role !== 'user')) {
+    window.location.href = currentUrl + '?role=user';
+    return;
+  }
+})();
+</script>
+
+<div id="app" class="min-h-screen flex flex-col md:flex-row">
+
+  <!-- SIDEBAR -->
+  <aside class="w-full md:w-64 bg-sidebar text-[#C9D1DB] flex flex-col md:h-screen md:sticky md:top-0 flex-shrink-0">
+    <div class="p-4 border-b border-white/10">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full bg-[#14B8A6]"></div>
+        <h1 class="font-display text-white text-base tracking-tight">Personal Hub</h1>
+      </div>
+      <p class="font-mono text-[10px] text-[#7C8696] mt-1" id="roleSubtitle">owner · full control</p>
+    </div>
+
+    <div class="p-4 border-b border-white/10">
+      <div class="flex gap-1 bg-sidebarmuted rounded p-1">
+        <a href="?role=owner" class="role-toggle-btn flex-1 text-center text-sm rounded px-2 py-1.5 transition active" id="ownerToggle">👑 Owner</a>
+        <a href="?role=user" class="role-toggle-btn flex-1 text-center text-sm rounded px-2 py-1.5 transition inactive" id="userToggle">👤 User</a>
+      </div>
+      <p class="font-mono text-[10px] text-[#7C8696] mt-2 leading-relaxed" id="roleHint">👑 Full control: create, edit, delete, and manage visibility.</p>
+    </div>
+
+    <nav id="categoryNav" class="p-3 flex flex-row md:flex-col gap-1 flex-wrap overflow-x-auto md:overflow-visible"></nav>
+
+    <div class="mt-auto p-4 border-t border-white/10 space-y-3">
+      <div class="font-mono text-[10px] text-[#7C8696] space-y-1" id="statusStrip"></div>
+
+      <!-- Owner tools -->
+      <div id="ownerTools" class="space-y-2 pt-2 border-t border-white/10">
+        <p class="font-mono text-[10px] uppercase tracking-wider text-[#7C8696]">Owner tools</p>
+        <div class="flex gap-2">
+          <button onclick="exportData()" class="flex-1 bg-sidebarmuted hover:bg-white/10 text-white text-xs font-mono px-2 py-2 rounded transition">Export</button>
+          <label class="flex-1 bg-sidebarmuted hover:bg-white/10 text-white text-xs font-mono px-2 py-2 rounded transition text-center cursor-pointer">
+            Import
+            <input type="file" id="importFile" accept="application/json" class="hidden"/>
+          </label>
+        </div>
+        <button onclick="wipeDatabase()" class="w-full bg-[#DC2626]/20 hover:bg-[#DC2626]/40 text-[#FCA5A5] text-xs font-mono px-2 py-2 rounded transition">Clear all data</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="flex-1 min-w-0 flex flex-col">
+
+    <header class="bg-panel border-b border-gray-200 px-5 py-4 sticky top-0 z-10">
+      <div class="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+        <div class="min-w-0">
+          <h2 id="categoryTitle" class="font-display text-xl leading-tight"></h2>
+          <p id="categoryCount" class="font-mono text-xs text-gray-400 mt-0.5"></p>
+        </div>
+        <div class="flex-1 flex gap-2 md:justify-end">
+          <input id="searchInput" placeholder="Search this category…" class="flex-1 md:flex-none md:w-72 text-sm px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-[#14B8A6]"/>
+          <button id="newEntryBtn" onclick="toggleForm()" class="bg-[#11151C] hover:bg-black text-white text-sm font-medium px-4 py-2 rounded transition whitespace-nowrap">+ New entry</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Guide banner -->
+    <div id="guideBanner" class="px-5 py-3 bg-[#14B8A6]/8 border-b border-[#14B8A6]/15 flex items-start gap-2 text-sm text-[#0D9488]"></div>
+
+    <!-- Create/edit panel -->
+    <section id="formPanel" class="hidden bg-white border-b border-gray-200 px-5 py-5 fade-in">
+      <div class="max-w-2xl space-y-3">
+        <input id="formTitleInput" placeholder="Title" class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-[#14B8A6]"/>
+        <div id="dynamicFields" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+        <textarea id="formNotesInput" placeholder="Notes…" class="w-full h-24 px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-[#14B8A6]"></textarea>
+        <div id="visibilityRow" class="flex flex-wrap items-center gap-2">
+          <label class="font-mono text-[10px] uppercase tracking-wider text-gray-400">Visibility</label>
+          <select id="visibilitySelect" class="text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none">
+            <option value="shared">Shared with User</option>
+            <option value="private">Private to Owner</option>
+          </select>
+          <button onclick="suggestTags()" class="ml-auto text-xs font-medium px-3 py-1.5 rounded border border-[#14B8A6]/40 text-[#0D9488] hover:bg-[#14B8A6]/10 transition">✨ Suggest tags</button>
+        </div>
+        <p id="forcedVisibilityNote" class="hidden font-mono text-[10px] text-[#7C8696]">🔒 This category is always private to Owner.</p>
+        <div>
+          <label class="font-mono text-[10px] uppercase tracking-wider text-gray-400 block mb-1">Tags</label>
+          <div id="tagChips" class="flex flex-wrap gap-1.5 mb-2"></div>
+          <input id="tagInput" placeholder="Add a tag and press Enter" class="w-full text-sm px-3 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-[#14B8A6]"/>
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button id="saveBtn" onclick="saveRecord()" class="bg-[#11151C] hover:bg-black text-white text-sm font-medium px-4 py-2 rounded transition">Save entry</button>
+          <button onclick="closeForm()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded transition">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Card list -->
+    <section class="flex-1 p-5">
+      <div id="cardList" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
+    </section>
+
+    <footer class="px-5 py-4 border-t border-gray-200 bg-panel flex items-center justify-center gap-3">
+      <button id="prevPage" onclick="changePage(-1)" class="font-mono text-xs px-3 py-1.5 border border-gray-200 rounded disabled:opacity-30 hover:bg-gray-50 transition">&larr; Prev</button>
+      <span id="pageInfo" class="font-mono text-xs text-gray-500"></span>
+      <button id="nextPage" onclick="changePage(1)" class="font-mono text-xs px-3 py-1.5 border border-gray-200 rounded disabled:opacity-30 hover:bg-gray-50 transition">Next &rarr;</button>
+    </footer>
+  </main>
+</div>
+
+<script>
+/* =====================================================================
+   COMPLETE OWNER PORTAL - Full CRUD Operations
+   ===================================================================== */
+
+const SCHEMA_VERSION = 1;
+const PAGE_SIZE = 20;
+const STORAGE_KEY = 'personal-hub-db';
+
+const CATEGORIES = [
+  { id:'notes', label:'Notes & Help', icon:'🗒️',
+    guide:'Quick notes, reminders, how-tos — anything you don\'t want to forget.',
+    placeholder:'What do you want to remember?', fields:[] },
+
+  { id:'books', label:'Books & Learning', icon:'📚',
+    guide:'Track what you\'re reading or studying.',
+    placeholder:'Thoughts, quotes, progress…',
+    fields:[
+      { key:'author', label:'Author', type:'text' },
+      { key:'status', label:'Status', type:'select', options:['Want to read','Reading','Finished'] }
+    ]},
+
+  { id:'health', label:'Health', icon:'🏥',
+    guide:'Appointments, medication, symptoms. Defaults to private.',
+    placeholder:'Notes for yourself or your provider…',
+    defaultVisibility:'private',
+    fields:[
+      { key:'provider', label:'Provider', type:'text' },
+      { key:'date', label:'Date', type:'date' }
+    ]},
+
+  { id:'logistics', label:'Logistics', icon:'📦',
+    guide:'Errands, deliveries, anything in motion.',
+    placeholder:'Carrier, tracking number, what\'s left to do…',
+    fields:[
+      { key:'status', label:'Status', type:'select', options:['Pending','In transit','Delivered','Returned'] },
+      { key:'dueDate', label:'Due date', type:'date' }
+    ]},
+
+  { id:'faith', label:'Faith & Reflection', icon:'🕊️',
+    guide:'Personal reflections, prayer notes, study. Defaults to private.',
+    placeholder:'Write freely…',
+    defaultVisibility:'private', fields:[] },
+
+  { id:'civic', label:'Civic & Politics', icon:'🏛️',
+    guide:'Things you\'re tracking — opinions, deadlines, dates to act on.',
+    placeholder:'What\'s happening, and any dates that matter…',
+    fields:[ { key:'date', label:'Date', type:'date' } ]},
+
+  { id:'finance', label:'Finance', icon:'💰',
+    guide:'Budgets, bills, subscriptions. Defaults to private.',
+    placeholder:'Notes about this expense or account…',
+    defaultVisibility:'private',
+    fields:[
+      { key:'amount', label:'Amount', type:'number' },
+      { key:'dueDate', label:'Due date', type:'date' }
+    ]},
+
+  { id:'log', label:'Private Log', icon:'🔒',
+    guide:'Owner-only journal. User can never see this category exists.',
+    placeholder:'For your eyes only…',
+    ownerOnly:true, forcedVisibility:'private', fields:[] }
+];
+
+const VISIBILITY = {
+  shared:  { label:'Shared',  color:'#0EA5E9' },
+  private: { label:'Private', color:'#8B5CF6' }
+};
+
+const TAG_RULES = {
+  health:    ['doctor','medicine','hospital','clinic','pill','therapy','diagnosis','nurse','prescription','symptom','checkup'],
+  faith:     ['church','prayer','bible','god','faith','worship','scripture','pastor','quran','temple'],
+  civic:     ['election','senator','government','policy','vote','congress','legislation','president','campaign'],
+  finance:   ['invoice','bill','budget','payment','subscription','rent','salary','tax'],
+  books:     ['book','chapter','novel','author','reading','library','isbn','paperback'],
+  logistics: ['package','shipment','delivery','tracking','carrier','courier','dispatch','order'],
+  urgent:    ['asap','urgent','immediately','critical','emergency']
+};
+
+const SEED_RECORDS = [
+  { title:'Welcome to your Hub', notes:'This note is shared, so both Owner and User views can see it.', category:'notes', visibility:'shared', fields:{} },
+  { title:'Atomic Habits', notes:'Loving the framework on habit stacking so far.', category:'books', visibility:'shared', fields:{ author:'James Clear', status:'Reading' } },
+  { title:'Annual physical', notes:'Bring the list of current medications.', category:'health', visibility:'private', fields:{ provider:'Dr. Alvarez', date:'2026-07-10' } },
+  { title:'Desk lamp', notes:'Ordered from Amazon, replacing the broken one.', category:'logistics', visibility:'shared', fields:{ status:'In transit', dueDate:'2026-06-22' } },
+  { title:'Evening reflection', notes:'Grateful for a quiet weekend.', category:'faith', visibility:'private', fields:{} },
+  { title:'Electric bill', notes:'Auto-pay scheduled, just keeping a record.', category:'finance', visibility:'private', fields:{ amount:'86.40', dueDate:'2026-06-28' } }
+];
+
+/* ----- utilities ----- */
+function tokenize(text){
+  return Array.from(new Set(
+    String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 1)
+  ));
+}
+
+function makeId(){
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
+function getCategory(id){ return CATEGORIES.find(c => c.id === id) || CATEGORIES[0]; }
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function normalizeRecord(raw){
+  const cat = CATEGORIES.some(c => c.id === raw.category) ? getCategory(raw.category) : CATEGORIES[0];
+  const title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : 'Untitled entry';
+  const notes = typeof raw.notes === 'string' ? raw.notes : (typeof raw.content === 'string' ? raw.content : '');
+  const fields = (raw.fields && typeof raw.fields === 'object' && !Array.isArray(raw.fields)) ? raw.fields : {};
+  let visibility = VISIBILITY[raw.visibility] ? raw.visibility : (cat.defaultVisibility || 'shared');
+  if(cat.forcedVisibility) visibility = cat.forcedVisibility;
+  return {
+    id: raw.id || makeId(),
+    title, notes, fields,
+    category: cat.id,
+    visibility,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter(t => typeof t === 'string') : [],
+    likes: typeof raw.likes === 'number' ? raw.likes : 0,
+    tokens: tokenize(`${title} ${notes} ${Object.values(fields).join(' ')}`),
+    createdAt: !isNaN(Date.parse(raw.createdAt)) ? raw.createdAt : new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+/* ----- persistence using localStorage ----- */
+async function loadDB(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const db = JSON.parse(raw);
+      if(!db.schemaVersion) db.schemaVersion = 1;
+      return db;
+    }
+    throw new Error('No data');
+  }catch(e){
+    const fresh = { schemaVersion: SCHEMA_VERSION, records: SEED_RECORDS.map(normalizeRecord) };
+    await persist(fresh);
+    return fresh;
+  }
+}
+
+async function persist(db){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    return true;
+  }catch(e){
+    console.error('Persist failed', e);
+    alert('Could not save — your change will only last for this session.');
+    return false;
+  }
+}
+
+function buildIndex(records){
+  const idx = new Map();
+  records.forEach(r => (r.tokens || []).forEach(t => {
+    if(!idx.has(t)) idx.set(t, new Set());
+    idx.get(t).add(r.id);
+  }));
+  return idx;
+}
+
+function searchIds(query, index){
+  const qTokens = tokenize(query);
+  if(qTokens.length === 0) return null;
+  let result = null;
+  qTokens.forEach(qt => {
+    const matched = new Set();
+    for(const [token, ids] of index.entries()){
+      if(token.startsWith(qt)) ids.forEach(id => matched.add(id));
+    }
+    result = result === null ? matched : new Set([...result].filter(id => matched.has(id)));
+  });
+  return result;
+}
+
+/* ----- STATE ----- */
+let DB = null, INDEX = null;
+let category = 'notes', page = 1, query = '', editId = null, formTags = [];
+
+function getVisibleRecords(){
+  return DB.records.filter(r => r.category === category);
+}
+
+function getFilteredRecords(){
+  let recs = getVisibleRecords();
+  if(query.trim()){
+    const ids = searchIds(query, INDEX);
+    recs = recs.filter(r => ids.has(r.id));
+  }
+  return recs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+/* ----- RENDER ----- */
+function renderNav(){
+  const nav = document.getElementById('categoryNav');
+  nav.innerHTML = '';
+  CATEGORIES.forEach(c => {
+    const btn = document.createElement('button');
+    const active = c.id === category;
+    btn.className = 'nav-btn text-left text-sm px-3 py-2 rounded flex items-center gap-2 whitespace-nowrap ' +
+      (active ? 'bg-[#14B8A6]/15 text-white' : 'text-[#9AA4B2] hover:bg-white/5 hover:text-white');
+    btn.innerHTML = `<span>${c.icon}</span><span>${c.label}</span>`;
+    btn.onclick = () => { category = c.id; page = 1; closeForm(); render(); };
+    nav.appendChild(btn);
+  });
+}
+
+function renderStatus(){
+  const total = DB.records.length;
+  const visible = getVisibleRecords().length;
+  const tokens = INDEX.size;
+  document.getElementById('statusStrip').innerHTML = `
+    <div class="flex justify-between"><span>TOTAL</span><span>${total}</span></div>
+    <div class="flex justify-between"><span>VISIBLE</span><span>${visible}</span></div>
+    <div class="flex justify-between"><span>TOKENS</span><span>${tokens}</span></div>
+  `;
+}
+
+function fieldSummary(cat, fields){
+  return cat.fields
+    .filter(f => fields[f.key])
+    .map(f => `<span class="tag-chip bg-gray-50 text-gray-500 border border-gray-200 px-2 py-0.5 rounded">${f.label}: ${escapeHtml(String(fields[f.key]))}</span>`)
+    .join('');
+}
+
+function renderCards(){
+  const filtered = getFilteredRecords();
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  page = Math.min(Math.max(1, page), totalPages);
+  const slice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const cat = getCategory(category);
+  document.getElementById('categoryTitle').textContent = `${cat.icon} ${cat.label}`;
+  document.getElementById('categoryCount').textContent = `${filtered.length} ${filtered.length === 1 ? 'entry' : 'entries'} · owner`;
+
+  const list = document.getElementById('cardList');
+  list.innerHTML = '';
+
+  if(slice.length === 0){
+    list.innerHTML = `
+      <div class="col-span-full text-center py-16">
+        <p class="font-display text-lg text-gray-400">Nothing here yet</p>
+        <p class="text-sm text-gray-400 mt-1">${query ? 'No entries match your search in this category.' : 'Add your first entry by clicking "+ New entry" above.'}</p>
+      </div>`;
+  } else {
+    slice.forEach(r => {
+      const vis = VISIBILITY[r.visibility] || VISIBILITY.shared;
+      const card = document.createElement('div');
+      card.className = 'fade-in bg-panel border border-gray-200 rounded-lg p-4 flex flex-col gap-2';
+      const tagsHtml = (r.tags || []).map(t => `<span class="tag-chip bg-gray-100 text-gray-600 px-2 py-0.5 rounded">${escapeHtml(t)}</span>`).join('');
+      const likes = r.likes || 0;
+
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <h3 class="font-display text-base leading-snug">${escapeHtml(r.title)}</h3>
+          <span class="flex items-center gap-1 font-mono text-[10px] flex-shrink-0 mt-1" style="color:${vis.color}">
+            <span class="dot" style="background:${vis.color}"></span>${vis.label}
+          </span>
+        </div>
+        <div class="flex flex-wrap gap-1.5">${fieldSummary(cat, r.fields || {})}</div>
+        <p class="text-sm text-gray-600 whitespace-pre-wrap">${escapeHtml(r.notes)}</p>
+        <div class="flex flex-wrap gap-1.5 mt-1">${tagsHtml}</div>
+        <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+          <div class="flex items-center gap-3">
+            <span class="font-mono text-[10px] text-gray-400">${new Date(r.createdAt).toLocaleString()}</span>
+            ${likes > 0 ? `<span class="font-mono text-[10px] text-red-400">❤️ ${likes}</span>` : ''}
+          </div>
+          <div class="flex gap-1.5">
+            <button class="text-xs font-medium text-gray-500 hover:text-black px-2 py-1 rounded transition" onclick="editRecord('${r.id}')">Edit</button>
+            <button class="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded transition" onclick="deleteRecord('${r.id}')">Delete</button>
+          </div>
+        </div>
+      `;
+      list.appendChild(card);
+    });
+  }
+
+  document.getElementById('pageInfo').textContent = `Page ${page} of ${totalPages}`;
+  document.getElementById('prevPage').disabled = page <= 1;
+  document.getElementById('nextPage').disabled = page >= totalPages;
+}
+
+function render(){
+  renderNav();
+  renderGuideBanner();
+  renderStatus();
+  renderCards();
+}
+
+function renderGuideBanner(){
+  const cat = getCategory(category);
+  document.getElementById('guideBanner').innerHTML = `<span>${cat.icon}</span><span>${cat.guide}</span>`;
+}
+
+/* ----- FORM (Owner only - FULL CRUD) ----- */
+function renderDynamicFields(cat, values){
+  const wrap = document.getElementById('dynamicFields');
+  wrap.innerHTML = '';
+  cat.fields.forEach(f => {
+    const val = (values && values[f.key]) || '';
+    const id = `field-${f.key}`;
+    let inputHtml;
+    if(f.type === 'select'){
+      inputHtml = `<select id="${id}" class="w-full text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none">
+        <option value="">—</option>
+        ${f.options.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}
+      </select>`;
+    } else {
+      inputHtml = `<input id="${id}" type="${f.type}" value="${escapeHtml(String(val))}" class="w-full text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:border-[#14B8A6]"/>`;
+    }
+    const div = document.createElement('div');
+    div.innerHTML = `<label class="font-mono text-[10px] uppercase tracking-wider text-gray-400 block mb-1">${f.label}</label>${inputHtml}`;
+    wrap.appendChild(div);
+  });
+}
+
+function readDynamicFields(cat){
+  const fields = {};
+  cat.fields.forEach(f => {
+    const el = document.getElementById(`field-${f.key}`);
+    if(el && el.value) fields[f.key] = el.value;
+  });
+  return fields;
+}
+
+function renderTagChips(){
+  document.getElementById('tagChips').innerHTML = formTags.map(t => `
+    <span class="tag-chip bg-[#14B8A6]/10 text-[#0D9488] px-2 py-1 rounded flex items-center gap-1">
+      ${escapeHtml(t)}
+      <button onclick="removeTag('${t}')" class="hover:text-red-500" aria-label="Remove tag ${escapeHtml(t)}">×</button>
+    </span>`).join('');
+}
+
+function addTag(tag){
+  const clean = tag.trim().toLowerCase();
+  if(clean && !formTags.includes(clean)) formTags.push(clean);
+  renderTagChips();
+}
+
+function removeTag(tag){
+  formTags = formTags.filter(t => t !== tag);
+  renderTagChips();
+}
+
+function applyVisibilityLock(cat){
+  const row = document.getElementById('visibilityRow');
+  const note = document.getElementById('forcedVisibilityNote');
+  if(cat.forcedVisibility){
+    row.style.display = 'none';
+    note.style.display = 'block';
+  } else {
+    row.style.display = 'flex';
+    note.style.display = 'none';
+    document.getElementById('visibilitySelect').value = cat.defaultVisibility || 'shared';
+  }
+}
+
+function toggleForm(){
+  const panel = document.getElementById('formPanel');
+  if(panel.style.display === 'none' || panel.style.display === ''){
+    // CREATE NEW ENTRY
+    editId = null;
+    formTags = [];
+    const cat = getCategory(category);
+    document.getElementById('formTitleInput').value = '';
+    document.getElementById('formNotesInput').value = '';
+    document.getElementById('formNotesInput').placeholder = cat.placeholder || 'Notes…';
+    renderDynamicFields(cat, {});
+    applyVisibilityLock(cat);
+    renderTagChips();
+    document.getElementById('saveBtn').textContent = 'Create New Entry ✨';
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth' });
+  } else {
+    closeForm();
+  }
+}
+
+function closeForm(){
+  document.getElementById('formPanel').style.display = 'none';
+  editId = null;
+}
+
+function editRecord(id){
+  const r = DB.records.find(x => x.id === id);
+  if(!r) return;
+  editId = id;
+  formTags = [...(r.tags || [])];
+  const cat = getCategory(r.category);
+  document.getElementById('formTitleInput').value = r.title;
+  document.getElementById('formNotesInput').value = r.notes;
+  document.getElementById('formNotesInput').placeholder = cat.placeholder || 'Notes…';
+  renderDynamicFields(cat, r.fields || {});
+  applyVisibilityLock(cat);
+  if(!cat.forcedVisibility) document.getElementById('visibilitySelect').value = r.visibility;
+  renderTagChips();
+  document.getElementById('saveBtn').textContent = 'Update Entry ✏️';
+  document.getElementById('formPanel').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function suggestTags(){
+  const title = document.getElementById('formTitleInput').value;
+  const notes = document.getElementById('formNotesInput').value;
+  const lower = `${title} ${notes}`.toLowerCase();
+  const matched = Object.entries(TAG_RULES).filter(([tag, kws]) => kws.some(k => lower.includes(k))).map(([t]) => t);
+  matched.forEach(addTag);
+  if(matched.length === 0) alert('No keyword matches found for auto-tagging.');
+}
+
+/* ----- CRUD OPERATIONS (Owner only) ----- */
+async function saveRecord(){
+  const cat = getCategory(category);
+  const title = document.getElementById('formTitleInput').value.trim();
+  const notes = document.getElementById('formNotesInput').value.trim();
+  const visibility = cat.forcedVisibility || document.getElementById('visibilitySelect').value;
+  const fields = readDynamicFields(cat);
+
+  if(!title){ alert('Title is required.'); return; }
+
+  if(editId){
+    // UPDATE existing record
+    const idx = DB.records.findIndex(r => r.id === editId);
+    if(idx === -1) return;
+    DB.records[idx] = normalizeRecord({ 
+      ...DB.records[idx], 
+      title, notes, visibility, fields, tags: formTags, category 
+    });
+  } else {
+    // CREATE new record
+    DB.records.push(normalizeRecord({ 
+      title, notes, category, visibility, fields, tags: formTags 
+    }));
+  }
+
+  INDEX = buildIndex(DB.records);
+  await persist(DB);
+  closeForm();
+  render();
+}
+
+async function deleteRecord(id){
+  const r = DB.records.find(x => x.id === id);
+  if(!r) return;
+  if(!confirm(`Permanently delete "${r.title}"?`)) return;
+  DB.records = DB.records.filter(x => x.id !== id);
+  INDEX = buildIndex(DB.records);
+  await persist(DB);
+  render();
+}
+
+async function wipeDatabase(){
+  if(!confirm('This permanently deletes every entry across every category. Continue?')) return;
+  const phrase = prompt('Type DELETE ALL to confirm.');
+  if(phrase !== 'DELETE ALL'){ alert('Cancelled — confirmation phrase did not match.'); return; }
+  DB = { schemaVersion: SCHEMA_VERSION, records: [] };
+  INDEX = buildIndex(DB.records);
+  await persist(DB);
+  category = 'notes';
+  page = 1;
+  render();
+}
+
+function changePage(delta){
+  page += delta;
+  renderCards();
+}
+
+/* ----- EXPORT / IMPORT ----- */
+function exportData(){
+  const envelope = {
+    app: 'Personal Hub', exportVersion: 1, schemaVersion: DB.schemaVersion,
+    exportedAt: new Date().toISOString(), recordCount: DB.records.length, records: DB.records
+  };
+  const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `personal-hub-backup-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function validateEnvelope(data){
+  const errors = [];
+  if(typeof data !== 'object' || data === null) errors.push('File is not a JSON object.');
+  if(!Array.isArray(data.records)){ errors.push('Missing or invalid "records" array.'); return { valid:false, errors }; }
+  data.records.forEach((r, i) => {
+    if(typeof r.title !== 'string' || !r.title.trim()) errors.push(`Record ${i}: missing title.`);
+    if(r.visibility !== undefined && !VISIBILITY[r.visibility]) errors.push(`Record ${i}: invalid visibility "${r.visibility}".`);
+    if(r.tags !== undefined && !Array.isArray(r.tags)) errors.push(`Record ${i}: tags must be an array.`);
+    if(r.createdAt !== undefined && isNaN(Date.parse(r.createdAt))) errors.push(`Record ${i}: invalid createdAt date.`);
+  });
+  return { valid: errors.length === 0, errors };
+}
+
+async function importData(e){
+  const file = e.target.files[0];
+  if(!file) return;
+
+  let parsed;
+  try{ parsed = JSON.parse(await file.text()); }
+  catch(err){ alert('Import failed: the file is not valid JSON.'); e.target.value = ''; return; }
+
+  const { valid, errors } = validateEnvelope(parsed);
+  if(!valid){
+    alert('Import rejected — the backup file failed validation:\n\n' + errors.slice(0, 8).join('\n') +
+      (errors.length > 8 ? `\n…and ${errors.length - 8} more issue(s).` : ''));
+    e.target.value = '';
+    return;
+  }
+
+  const incoming = parsed.records.map(normalizeRecord);
+  const replace = confirm(`${incoming.length} valid record(s) found.\n\nOK = REPLACE everything.\nCancel = MERGE alongside existing data.`);
+  if(replace){
+    DB = { schemaVersion: SCHEMA_VERSION, records: incoming };
+  } else {
+    DB.records = [...DB.records, ...incoming.map(r => ({ ...r, id: makeId() }))];
+  }
+  INDEX = buildIndex(DB.records);
+  await persist(DB);
+  page = 1;
+  render();
+  e.target.value = '';
+}
+
+/* ----- BOOT ----- */
+async function bootstrap(){
+  DB = await loadDB();
+  INDEX = buildIndex(DB.records);
+
+  document.getElementById('searchInput').addEventListener('input', (e) => { 
+    query = e.target.value; 
+    page = 1; 
+    renderCards(); 
+  });
+  
+  document.getElementById('tagInput').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ 
+      e.preventDefault(); 
+      addTag(e.target.value); 
+      e.target.value = ''; 
+    }
+  });
+  
+  document.getElementById('importFile').addEventListener('change', importData);
+
+  // Set initial role UI
+  document.getElementById('roleSubtitle').textContent = 'owner · full control';
+  document.getElementById('roleHint').textContent = '👑 Full control: create, edit, delete, and manage visibility.';
+  
+  render();
+}
+
+bootstrap();
+</script>
+</body>
+</html>
